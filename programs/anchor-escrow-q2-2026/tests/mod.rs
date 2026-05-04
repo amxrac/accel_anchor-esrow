@@ -3,8 +3,9 @@ mod tests {
 
     use {
         anchor_lang::{
-            prelude::msg, solana_program::instruction::Instruction,
-            solana_program::program_pack::Pack, system_program::ID as SYSTEM_PROGRAM_ID,
+            prelude::msg,
+            solana_program::{instruction::Instruction, program_pack::Pack},
+            system_program::ID as SYSTEM_PROGRAM_ID,
             AccountDeserialize, InstructionData, ToAccountMetas,
         },
         anchor_spl::{
@@ -15,11 +16,14 @@ mod tests {
         litesvm_token::{
             spl_token::ID as TOKEN_PROGRAM_ID, CreateAssociatedTokenAccount, CreateMint, MintTo,
         },
+        solana_account::Account,
         solana_keypair::Keypair,
         solana_message::Message,
         solana_pubkey::Pubkey,
+        solana_rpc_client::rpc_client::RpcClient,
         solana_signer::Signer,
         solana_transaction::Transaction,
+        std::str::FromStr,
     };
 
     // Setup function to initialize LiteSVM and create a payer keypair
@@ -30,6 +34,32 @@ mod tests {
         let bytes = include_bytes!("../../../target/deploy/anchor_escrow_q2_2026.so");
         svm.add_program(program_id, bytes).unwrap();
         svm.airdrop(&payer.pubkey(), 1_000_000_000).unwrap();
+
+        // Example on how to Load an account from devnet
+        // LiteSVM does not have access to real Solana network data since it does not have network access,
+        // so we use an RPC client to fetch account data from devnet
+        let rpc_client = RpcClient::new("https://api.devnet.solana.com");
+        let account_address =
+            Pubkey::from_str("DRYvf71cbF2s5wgaJQvAGkghMkRcp5arvsK2w97vXhi2").unwrap();
+        let fetched_account = rpc_client
+            .get_account(&account_address)
+            .expect("Failed to fetch account from devnet");
+
+        // Set the fetched account in the LiteSVM environment
+        // This allows us to simulate interactions with this account during testing
+        svm.set_account(
+            payer.pubkey(),
+            Account {
+                lamports: fetched_account.lamports,
+                data: fetched_account.data,
+                owner: Pubkey::from(fetched_account.owner.to_bytes()),
+                executable: fetched_account.executable,
+                rent_epoch: fetched_account.rent_epoch,
+            },
+        )
+        .unwrap();
+
+        msg!("Lamports of fetched account: {}", fetched_account.lamports);
 
         // Return the LiteSVM instance and payer keypair
         (svm, payer)
